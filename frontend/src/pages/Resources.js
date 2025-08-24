@@ -11,10 +11,13 @@ import {
   Edit,
   Trash2,
   CheckCircle,
-  X
+  X,
+  Anchor,
+  Shield
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { availabilityData } from '../data/availability';
 
 const Resources = () => {
   const [shelters, setShelters] = useState([]);
@@ -161,73 +164,85 @@ const Resources = () => {
           >
             Hospitals ({hospitals.length})
           </button>
+          <button
+            onClick={() => setActiveTab('availability')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'availability'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Availability
+          </button>
         </nav>
       </div>
 
       {/* Filters and Search */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Search */}
-          <div className="md:col-span-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search resources..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+      {activeTab !== 'availability' && (
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Search */}
+            <div className="md:col-span-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search resources..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
-          </div>
 
-          {/* Type Filter (Shelters only) */}
-          {activeTab === 'shelters' && (
+            {/* Type Filter (Shelters only) */}
+            {activeTab === 'shelters' && (
+              <div>
+                <select
+                  value={filters.type}
+                  onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">All Types</option>
+                  {shelterTypes.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Status Filter (Shelters only) */}
+            {activeTab === 'shelters' && (
+              <div>
+                <select
+                  value={filters.status}
+                  onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">All Status</option>
+                  {shelterStatuses.map(status => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Region Filter */}
             <div>
               <select
-                value={filters.type}
-                onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+                value={filters.region}
+                onChange={(e) => setFilters({ ...filters, region: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="">All Types</option>
-                {shelterTypes.map(type => (
-                  <option key={type} value={type}>{type}</option>
+                <option value="">All Regions</option>
+                {regions.map(region => (
+                  <option key={region} value={region}>{region}</option>
                 ))}
               </select>
             </div>
-          )}
-
-          {/* Status Filter (Shelters only) */}
-          {activeTab === 'shelters' && (
-            <div>
-              <select
-                value={filters.status}
-                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">All Status</option>
-                {shelterStatuses.map(status => (
-                  <option key={status} value={status}>{status}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Region Filter */}
-          <div>
-            <select
-              value={filters.region}
-              onChange={(e) => setFilters({ ...filters, region: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Regions</option>
-              {regions.map(region => (
-                <option key={region} value={region}>{region}</option>
-              ))}
-            </select>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Resources Content */}
       {activeTab === 'shelters' && (
@@ -266,6 +281,109 @@ const Resources = () => {
                 region={getRegionName(hospital.longitude)}
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'availability' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className="p-6 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Resource Availability
+            </h3>
+            <p className="text-sm text-gray-600 mt-1">Current status of emergency response equipment</p>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Boats */}
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200">
+                <div className="flex items-center space-x-4 mb-4">
+                  <div className="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center">
+                    <Anchor className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-semibold text-blue-900">Boats</h4>
+                    <p className="text-blue-600">Emergency Response Vessels</p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-blue-700 font-medium">Available:</span>
+                    <span className="text-2xl font-bold text-blue-900">{availabilityData.boats.left}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-blue-700 font-medium">Total:</span>
+                    <span className="text-lg text-blue-800">{availabilityData.boats.total}</span>
+                  </div>
+                  <div className="w-full bg-blue-200 rounded-full h-2">
+                    <div 
+                      className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(availabilityData.boats.left / availabilityData.boats.total) * 100}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-sm text-blue-600">
+                      {Math.round((availabilityData.boats.left / availabilityData.boats.total) * 100)}% Available
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Life Jackets */}
+              <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200">
+                <div className="flex items-center space-x-4 mb-4">
+                  <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center">
+                    <Shield className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-semibold text-green-900">Life Jackets</h4>
+                    <p className="text-green-600">Safety Equipment</p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-green-700 font-medium">Available:</span>
+                    <span className="text-2xl font-bold text-green-900">{availabilityData.lifeJackets.left}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-green-700 font-medium">Total:</span>
+                    <span className="text-lg text-green-800">{availabilityData.lifeJackets.total}</span>
+                  </div>
+                  <div className="w-full bg-green-200 rounded-full h-2">
+                    <div 
+                      className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(availabilityData.lifeJackets.left / availabilityData.lifeJackets.total) * 100}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-sm text-green-600">
+                      {Math.round((availabilityData.lifeJackets.left / availabilityData.lifeJackets.total) * 100)}% Available
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Summary Stats */}
+            <div className="mt-8 p-6 bg-gray-50 rounded-xl">
+              <h5 className="text-lg font-semibold text-gray-900 mb-4">Summary</h5>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">{availabilityData.boats.left}</div>
+                  <div className="text-sm text-gray-600">Boats Available</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">{availabilityData.lifeJackets.left}</div>
+                  <div className="text-sm text-gray-600">Life Jackets Available</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {availabilityData.boats.left + availabilityData.lifeJackets.left}
+                  </div>
+                  <div className="text-sm text-gray-600">Total Items Available</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
