@@ -2,138 +2,174 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
-# Removed geoalchemy2 import for SQLite compatibility
+import math
 
-from database import get_db, Shelter
+from database import get_db, Shelter, Organization
 from models import ShelterCreate, ShelterUpdate, ShelterResponse
-import uuid
-from datetime import datetime
 
 router = APIRouter()
 
-@router.post("/", response_model=ShelterResponse)
-async def create_shelter(
-    shelter_data: ShelterCreate,
-    db: Session = Depends(get_db)
-):
-    """Create a new shelter"""
-    try:
-        db_shelter = Shelter(
-            name=shelter_data.name,
-            longitude=shelter_data.longitude,
-            latitude=shelter_data.latitude,
-            address=shelter_data.address,
-            capacity=shelter_data.capacity,
-            type=shelter_data.type,
-            contact_person=shelter_data.contact_person,
-            contact_phone=shelter_data.contact_phone
-        )
-        
-        db.add(db_shelter)
-        db.commit()
-        db.refresh(db_shelter)
-        
-        return db_shelter
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error creating shelter: {str(e)}")
+def calculate_distance(lat1, lon1, lat2, lon2):
+    """Calculate distance between two coordinates using Haversine formula"""
+    R = 6371  # Earth's radius in kilometers
+    
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    c = 2 * math.asin(math.sqrt(a))
+    
+    return R * c
 
 @router.get("/", response_model=List[ShelterResponse])
 async def get_shelters(
-    type: Optional[str] = Query(None, description="Filter by shelter type"),
-    status: Optional[str] = Query(None, description="Filter by status"),
-    region: Optional[str] = Query(None, description="Filter by region"),
-    has_capacity: Optional[bool] = Query(None, description="Filter by availability"),
+    available_only: bool = Query(False, description="Show only shelters with available capacity"),
     db: Session = Depends(get_db)
 ):
-    """Get shelters with filtering options"""
+    """Get all shelters with optional filtering"""
     query = db.query(Shelter)
     
-    if type:
-        query = query.filter(Shelter.type == type)
-    if status:
-        query = query.filter(Shelter.status == status)
-    if has_capacity is not None:
-        if has_capacity:
-            query = query.filter(Shelter.current_occupancy < Shelter.capacity)
-        else:
-            query = query.filter(Shelter.current_occupancy >= Shelter.capacity)
+    if available_only:
+        query = query.filter(Shelter.current_occupancy < Shelter.capacity)
     
-    # Region filtering
-    if region:
-        if region.lower() == "western":
-            query = query.filter(Shelter.longitude >= 72.0, Shelter.longitude <= 75.0)
-        elif region.lower() == "central":
-            query = query.filter(Shelter.longitude >= 75.0, Shelter.longitude <= 78.0)
-        elif region.lower() == "vidarbha":
-            query = query.filter(Shelter.longitude >= 78.0, Shelter.longitude <= 81.0)
-    
-    return query.all()
+    shelters = query.all()
+    return shelters
 
 @router.get("/nearby")
 async def get_nearby_shelters(
     latitude: float = Query(..., description="Current latitude"),
     longitude: float = Query(..., description="Current longitude"),
-    radius_km: float = Query(10.0, description="Search radius in kilometers"),
-    limit: int = Query(10, le=50, description="Maximum number of shelters to return"),
+    radius_km: float = Query(50, description="Search radius in kilometers"),
+    min_capacity: int = Query(0, description="Minimum available capacity"),
     db: Session = Depends(get_db)
 ):
-    """Get shelters within a specified radius"""
-    try:
-        # Convert km to degrees (approximate)
-        radius_degrees = radius_km / 111.0
+    """Find nearby shelters with available capacity"""
+    shelters = db.query(Shelter).filter(
+        Shelter.current_occupancy < Shelter.capacity
+    ).all()
+    
+    nearby_shelters = []
+    for shelter in shelters:
+        distance = calculate_distance(latitude, longitude, shelter.latitude, shelter.longitude)
+        available_capacity = shelter.capacity - shelter.current_occupancy
         
-        shelters = db.query(Shelter).filter(
-            Shelter.longitude >= longitude - radius_degrees,
-            Shelter.longitude <= longitude + radius_degrees,
-            Shelter.latitude >= latitude - radius_degrees,
-            Shelter.latitude <= latitude + radius_degrees
-        ).limit(limit).all()
-        
-        # Calculate distances and sort
-        shelter_distances = []
-        for shelter in shelters:
-            # Simple distance calculation (can be improved with PostGIS functions)
-            lat_diff = abs(shelter.latitude - latitude)
-            lon_diff = abs(shelter.longitude - longitude)
-            distance = ((lat_diff ** 2 + lon_diff ** 2) ** 0.5) * 111.0  # Convert to km
-            
-            shelter_distances.append({
+        if distance <= radius_km and available_capacity >= min_capacity:
+            nearby_shelters.append({
                 "id": str(shelter.id),
                 "name": shelter.name,
-                "longitude": shelter.longitude,
-                "latitude": shelter.latitude,
                 "address": shelter.address,
-                "capacity": shelter.capacity,
+                "latitude": shelter.latitude,
+                "longitude": shelter.longitude,
+                "distance_km": round(distance, 2),
+                "available_capacity": available_capacity,
+                "total_capacity": shelter.capacity,
                 "current_occupancy": shelter.current_occupancy,
-                "available_capacity": shelter.capacity - shelter.current_occupancy,
-                "type": shelter.type,
                 "status": shelter.status,
+                "facilities": shelter.facilities,
                 "contact_person": shelter.contact_person,
-                "contact_phone": shelter.contact_phone,
-                "distance_km": round(distance, 2)
+                "contact_phone": shelter.contact_phone
             })
+    
+    # Sort by distance
+    nearby_shelters.sort(key=lambda x: x["distance_km"])
+    return nearby_shelters
+
+@router.get("/emergency")
+async def get_emergency_shelters(
+    people_count: int = Query(..., description="Number of people needing shelter"),
+    latitude: float = Query(..., description="Current latitude"),
+    longitude: float = Query(..., description="Current longitude"),
+    db: Session = Depends(get_db)
+):
+    """Find emergency shelters that can accommodate the specified number of people"""
+    shelters = db.query(Shelter).filter(
+        Shelter.status == "Active",
+        (Shelter.capacity - Shelter.current_occupancy) >= people_count
+    ).all()
+    
+    emergency_shelters = []
+    for shelter in shelters:
+        distance = calculate_distance(latitude, longitude, shelter.latitude, shelter.longitude)
+        available_capacity = shelter.capacity - shelter.current_occupancy
         
-        # Sort by distance
-        shelter_distances.sort(key=lambda x: x["distance_km"])
-        
-        return shelter_distances[:limit]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error finding nearby shelters: {str(e)}")
+        emergency_shelters.append({
+            "id": str(shelter.id),
+            "name": shelter.name,
+            "address": shelter.address,
+            "latitude": shelter.latitude,
+            "longitude": shelter.longitude,
+            "distance_km": round(distance, 2),
+            "available_capacity": available_capacity,
+            "can_accommodate": available_capacity >= people_count,
+            "facilities": shelter.facilities,
+            "contact_person": shelter.contact_person,
+            "contact_phone": shelter.contact_phone,
+            "estimated_travel_time": round(distance * 2, 1)  # Rough estimate: 2 min per km
+        })
+    
+    # Sort by distance and capacity
+    emergency_shelters.sort(key=lambda x: (x["distance_km"], -x["available_capacity"]))
+    return emergency_shelters
+
+@router.get("/stats")
+async def get_shelter_stats(db: Session = Depends(get_db)):
+    """Get comprehensive shelter statistics"""
+    total_shelters = db.query(func.count(Shelter.id)).scalar()
+    active_shelters = db.query(func.count(Shelter.id)).filter(Shelter.status == "Active").scalar()
+    total_capacity = db.query(func.sum(Shelter.capacity)).scalar() or 0
+    current_occupancy = db.query(func.sum(Shelter.current_occupancy)).scalar() or 0
+    available_capacity = total_capacity - current_occupancy
+    utilization_rate = round((current_occupancy / total_capacity * 100), 2) if total_capacity > 0 else 0
+    
+    # Shelters by capacity utilization
+    full_shelters = db.query(func.count(Shelter.id)).filter(
+        Shelter.current_occupancy >= Shelter.capacity * 0.9
+    ).scalar()
+    
+    medium_shelters = db.query(func.count(Shelter.id)).filter(
+        Shelter.current_occupancy >= Shelter.capacity * 0.5,
+        Shelter.current_occupancy < Shelter.capacity * 0.9
+    ).scalar()
+    
+    empty_shelters = db.query(func.count(Shelter.id)).filter(
+        Shelter.current_occupancy < Shelter.capacity * 0.5
+    ).scalar()
+    
+    return {
+        "total_shelters": total_shelters,
+        "active_shelters": active_shelters,
+        "total_capacity": total_capacity,
+        "current_occupancy": current_occupancy,
+        "available_capacity": available_capacity,
+        "utilization_rate": utilization_rate,
+        "capacity_distribution": {
+            "full": full_shelters,
+            "medium": medium_shelters,
+            "empty": empty_shelters
+        }
+    }
 
 @router.get("/{shelter_id}", response_model=ShelterResponse)
 async def get_shelter(shelter_id: str, db: Session = Depends(get_db)):
     """Get a specific shelter by ID"""
-    try:
-        shelter_uuid = uuid.UUID(shelter_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid UUID format")
-    
-    shelter = db.query(Shelter).filter(Shelter.id == shelter_uuid).first()
+    shelter = db.query(Shelter).filter(Shelter.id == shelter_id).first()
     if not shelter:
         raise HTTPException(status_code=404, detail="Shelter not found")
-    
     return shelter
+
+@router.post("/", response_model=ShelterResponse)
+async def create_shelter(shelter_data: ShelterCreate, db: Session = Depends(get_db)):
+    """Create a new shelter"""
+    try:
+        db_shelter = Shelter(**shelter_data.dict())
+        db.add(db_shelter)
+        db.commit()
+        db.refresh(db_shelter)
+        return db_shelter
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creating shelter: {str(e)}")
 
 @router.put("/{shelter_id}", response_model=ShelterResponse)
 async def update_shelter(
@@ -142,12 +178,7 @@ async def update_shelter(
     db: Session = Depends(get_db)
 ):
     """Update shelter information"""
-    try:
-        shelter_uuid = uuid.UUID(shelter_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid UUID format")
-    
-    shelter = db.query(Shelter).filter(Shelter.id == shelter_uuid).first()
+    shelter = db.query(Shelter).filter(Shelter.id == shelter_id).first()
     if not shelter:
         raise HTTPException(status_code=404, detail="Shelter not found")
     
@@ -155,79 +186,71 @@ async def update_shelter(
     for field, value in update_data.items():
         setattr(shelter, field, value)
     
-    # Update status based on occupancy
-    if shelter.current_occupancy >= shelter.capacity:
-        shelter.status = "Full"
-    elif shelter.current_occupancy > 0:
-        shelter.status = "Active"
-    else:
-        shelter.status = "Available"
-    
     db.commit()
     db.refresh(shelter)
-    
     return shelter
 
 @router.delete("/{shelter_id}")
 async def delete_shelter(shelter_id: str, db: Session = Depends(get_db)):
-    """Delete a shelter (admin only)"""
-    try:
-        shelter_uuid = uuid.UUID(shelter_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid UUID format")
-    
-    shelter = db.query(Shelter).filter(Shelter.id == shelter_uuid).first()
+    """Delete a shelter"""
+    shelter = db.query(Shelter).filter(Shelter.id == shelter_id).first()
     if not shelter:
         raise HTTPException(status_code=404, detail="Shelter not found")
     
     db.delete(shelter)
     db.commit()
-    
     return {"message": "Shelter deleted successfully"}
 
-@router.get("/stats/overview")
-async def get_shelter_overview(db: Session = Depends(get_db)):
-    """Get shelter overview statistics"""
-    try:
-        total_shelters = db.query(func.count(Shelter.id)).scalar()
-        total_capacity = db.query(func.sum(Shelter.capacity)).scalar() or 0
-        current_occupancy = db.query(func.sum(Shelter.current_occupancy)).scalar() or 0
-        available_capacity = total_capacity - current_occupancy
-        
-        # Status breakdown
-        status_counts = db.query(
-            Shelter.status,
-            func.count(Shelter.id).label('count')
-        ).group_by(Shelter.status).all()
-        
-        # Type breakdown
-        type_counts = db.query(
-            Shelter.type,
-            func.count(Shelter.id).label('count'),
-            func.sum(Shelter.capacity).label('total_capacity')
-        ).group_by(Shelter.type).all()
-        
-        return {
-            "total_shelters": total_shelters,
-            "total_capacity": total_capacity,
-            "current_occupancy": current_occupancy,
-            "available_capacity": available_capacity,
-            "utilization_rate": round(current_occupancy / total_capacity * 100, 2) if total_capacity > 0 else 0,
-            "status_breakdown": [
-                {
-                    "status": item.status,
-                    "count": item.count
-                }
-                for item in status_counts
-            ],
-            "type_breakdown": [
-                {
-                    "type": item.type,
-                    "count": item.count,
-                    "total_capacity": item.total_capacity or 0
-                }
-                for item in type_counts
-            ]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching shelter overview: {str(e)}")
+@router.post("/{shelter_id}/check-in")
+async def check_in_people(
+    shelter_id: str,
+    people_count: int,
+    db: Session = Depends(get_db)
+):
+    """Check in people to a shelter"""
+    shelter = db.query(Shelter).filter(Shelter.id == shelter_id).first()
+    if not shelter:
+        raise HTTPException(status_code=404, detail="Shelter not found")
+    
+    if shelter.current_occupancy + people_count > shelter.capacity:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Shelter capacity exceeded. Available: {shelter.capacity - shelter.current_occupancy}"
+        )
+    
+    shelter.current_occupancy += people_count
+    db.commit()
+    db.refresh(shelter)
+    
+    return {
+        "message": f"{people_count} people checked in successfully",
+        "current_occupancy": shelter.current_occupancy,
+        "available_capacity": shelter.capacity - shelter.current_occupancy
+    }
+
+@router.post("/{shelter_id}/check-out")
+async def check_out_people(
+    shelter_id: str,
+    people_count: int,
+    db: Session = Depends(get_db)
+):
+    """Check out people from a shelter"""
+    shelter = db.query(Shelter).filter(Shelter.id == shelter_id).first()
+    if not shelter:
+        raise HTTPException(status_code=404, detail="Shelter not found")
+    
+    if shelter.current_occupancy - people_count < 0:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot check out more people than currently in shelter"
+        )
+    
+    shelter.current_occupancy -= people_count
+    db.commit()
+    db.refresh(shelter)
+    
+    return {
+        "message": f"{people_count} people checked out successfully",
+        "current_occupancy": shelter.current_occupancy,
+        "available_capacity": shelter.capacity - shelter.current_occupancy
+    }

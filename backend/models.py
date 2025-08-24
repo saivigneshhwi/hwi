@@ -3,7 +3,92 @@ from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
 
-# SOS Request Models
+# Organization Models
+class OrganizationBase(BaseModel):
+    name: str = Field(..., description="Organization name")
+    type: str = Field(..., description="Type: Government, NGO, Volunteer Group, Private")
+    category: str = Field(..., description="Category: Emergency Response, Medical, Relief, Logistics")
+    address: Optional[str] = None
+    contact_person: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_email: Optional[str] = None
+    capacity: int = Field(0, ge=0, description="Number of people they can handle")
+
+class OrganizationCreate(OrganizationBase):
+    pass
+
+class OrganizationUpdate(BaseModel):
+    current_load: Optional[int] = None
+    status: Optional[str] = None
+    contact_person: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_email: Optional[str] = None
+
+class OrganizationResponse(OrganizationBase):
+    id: str
+    current_load: int
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# Division Models
+class DivisionBase(BaseModel):
+    name: str = Field(..., description="Division name")
+    organization_id: str = Field(..., description="Parent organization ID")
+    type: str = Field(..., description="Type: Medical, Rescue, Logistics, Communication")
+    description: Optional[str] = None
+    capacity: int = Field(0, ge=0)
+
+class DivisionCreate(DivisionBase):
+    pass
+
+class DivisionUpdate(BaseModel):
+    current_load: Optional[int] = None
+    status: Optional[str] = None
+    description: Optional[str] = None
+
+class DivisionResponse(DivisionBase):
+    id: str
+    current_load: int
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# Staff Models
+class StaffBase(BaseModel):
+    name: str = Field(..., description="Staff member name")
+    organization_id: str = Field(..., description="Organization ID")
+    division_id: Optional[str] = None
+    role: str = Field(..., description="Role: Manager, Worker, Specialist, Volunteer")
+    skills: Optional[str] = None  # JSON string of skills
+    contact_phone: Optional[str] = None
+    contact_email: Optional[str] = None
+    current_location: Optional[str] = None
+
+class StaffCreate(StaffBase):
+    pass
+
+class StaffUpdate(BaseModel):
+    division_id: Optional[str] = None
+    skills: Optional[str] = None
+    availability: Optional[str] = None
+    current_location: Optional[str] = None
+    status: Optional[str] = None
+
+class StaffResponse(StaffBase):
+    id: str
+    availability: str
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# SOS Request Models (Enhanced)
 class SOSRequestBase(BaseModel):
     people: int = Field(..., ge=1, description="Number of people affected")
     longitude: float = Field(..., ge=-180, le=180, description="Longitude coordinate")
@@ -19,23 +104,49 @@ class SOSRequestUpdate(BaseModel):
     status: Optional[str] = None
     priority: Optional[int] = Field(None, ge=1, le=5)
     assigned_to: Optional[str] = None
+    assigned_organization: Optional[str] = None
+    assigned_division: Optional[str] = None
     notes: Optional[str] = None
+    estimated_completion: Optional[datetime] = None
 
 class SOSRequestResponse(SOSRequestBase):
-    id: UUID
+    id: str
     external_id: str
     status: str
     priority: int
     assigned_to: Optional[str]
+    assigned_organization: Optional[str]
+    assigned_division: Optional[str]
     notes: Optional[str]
     timestamp: datetime
+    estimated_completion: Optional[datetime]
+    actual_completion: Optional[datetime]
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
 
-# Shelter Models
+# Ticket Update History Models
+class TicketUpdateBase(BaseModel):
+    ticket_id: str
+    updated_by: str
+    field_name: str
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    notes: Optional[str] = None
+
+class TicketUpdateCreate(TicketUpdateBase):
+    pass
+
+class TicketUpdateResponse(TicketUpdateBase):
+    id: str
+    update_time: datetime
+
+    class Config:
+        from_attributes = True
+
+# Shelter Models (Enhanced)
 class ShelterBase(BaseModel):
     name: str
     longitude: float
@@ -45,6 +156,8 @@ class ShelterBase(BaseModel):
     type: str
     contact_person: str
     contact_phone: str
+    organization_id: Optional[str] = None
+    facilities: Optional[str] = None  # JSON string of facilities
 
 class ShelterCreate(ShelterBase):
     pass
@@ -52,9 +165,10 @@ class ShelterCreate(ShelterBase):
 class ShelterUpdate(BaseModel):
     current_occupancy: Optional[int] = None
     status: Optional[str] = None
+    facilities: Optional[str] = None
 
 class ShelterResponse(ShelterBase):
-    id: UUID
+    id: str
     current_occupancy: int
     status: str
     created_at: datetime
@@ -62,7 +176,7 @@ class ShelterResponse(ShelterBase):
     class Config:
         from_attributes = True
 
-# Hospital Models
+# Hospital Models (Enhanced)
 class HospitalBase(BaseModel):
     name: str
     longitude: float
@@ -71,6 +185,9 @@ class HospitalBase(BaseModel):
     total_beds: int
     icu_beds: int
     contact_phone: str
+    organization_id: Optional[str] = None
+    specialties: Optional[str] = None  # JSON string of specialties
+    emergency_services: Optional[str] = None  # JSON string of emergency services
 
 class HospitalCreate(HospitalBase):
     pass
@@ -78,9 +195,11 @@ class HospitalCreate(HospitalBase):
 class HospitalUpdate(BaseModel):
     available_beds: Optional[int] = None
     available_icu: Optional[int] = None
+    specialties: Optional[str] = None
+    emergency_services: Optional[str] = None
 
 class HospitalResponse(HospitalBase):
-    id: UUID
+    id: str
     available_beds: int
     available_icu: int
     created_at: datetime
@@ -88,7 +207,7 @@ class HospitalResponse(HospitalBase):
     class Config:
         from_attributes = True
 
-# Resource Center Models
+# Resource Center Models (Enhanced)
 class ResourceCenterBase(BaseModel):
     name: str
     longitude: float
@@ -98,18 +217,21 @@ class ResourceCenterBase(BaseModel):
     inventory: str
     contact_person: str
     contact_phone: str
+    organization_id: Optional[str] = None
+    capacity: int = Field(0, ge=0)
+    current_stock: int = Field(0, ge=0)
 
 class ResourceCenterCreate(ResourceCenterBase):
     pass
 
 class ResourceCenterResponse(ResourceCenterBase):
-    id: UUID
+    id: str
     created_at: datetime
 
     class Config:
         from_attributes = True
 
-# Dashboard Models
+# Dashboard Models (Enhanced)
 class DashboardStats(BaseModel):
     total_sos: int
     pending_sos: int
@@ -120,6 +242,21 @@ class DashboardStats(BaseModel):
     available_shelter_capacity: int
     total_hospital_beds: int
     available_hospital_beds: int
+    total_organizations: int
+    total_staff: int
+    active_staff: int
+
+class OrganizationDashboardStats(BaseModel):
+    organization_id: str
+    organization_name: str
+    total_staff: int
+    active_staff: int
+    total_divisions: int
+    active_divisions: int
+    assigned_tickets: int
+    completed_tickets: int
+    current_load: int
+    capacity: int
 
 class RegionStats(BaseModel):
     region: str
@@ -128,7 +265,7 @@ class RegionStats(BaseModel):
     shelter_capacity: int
     shelter_available: int
 
-# Authentication Models
+# Authentication Models (Enhanced)
 class UserLogin(BaseModel):
     username: str
     password: str
@@ -138,14 +275,16 @@ class UserCreate(BaseModel):
     email: str
     password: str
     role: str = "viewer"
-    organization: Optional[str] = None
+    organization_id: Optional[str] = None
+    division_id: Optional[str] = None
 
 class UserResponse(BaseModel):
-    id: UUID
+    id: str
     username: str
     email: str
     role: str
-    organization: Optional[str]
+    organization_id: Optional[str]
+    division_id: Optional[str]
     is_active: bool
 
     class Config:
@@ -168,7 +307,7 @@ class MapBounds(BaseModel):
     west: float
 
 class SOSMapData(BaseModel):
-    id: UUID
+    id: str
     longitude: float
     latitude: float
     status: str
@@ -179,3 +318,35 @@ class SOSMapData(BaseModel):
 
     class Config:
         from_attributes = True
+
+# Flood Detection Models
+class FloodArea(BaseModel):
+    id: str
+    name: str
+    coordinates: List[List[float]]  # [[lng, lat], [lng, lat], ...]
+    severity: str  # High, Medium, Low
+    affected_area_km2: float
+    affected_population: int
+    confidence: float
+    detection_method: str
+    threshold_used: float
+    analysis_date: str
+
+class FloodAnalysisRequest(BaseModel):
+    pre_flood_start: str
+    pre_flood_end: str
+    post_flood_start: str
+    post_flood_end: str
+    threshold: float = -5.0
+    region: str = "Maharashtra"
+    analysis_type: str = "Sentinel-1 VH Change Detection"
+
+class FloodAnalysisResponse(BaseModel):
+    flood_areas: List[FloodArea]
+    analysis_parameters: FloodAnalysisRequest
+    total_affected_area_km2: float
+    total_affected_population: int
+    average_confidence: float
+    analysis_completed_at: str
+    data_source: str
+    processing_time_seconds: float

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
 
-from database import get_db, SOSRequest, Shelter, Hospital, ResourceCenter
+from database import get_db, SOSRequest, Shelter, Hospital, ResourceCenter, Organization, Staff
 from models import DashboardStats, RegionStats
 
 router = APIRouter()
@@ -28,6 +28,11 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
         total_hospital_beds = db.query(func.sum(Hospital.total_beds)).scalar() or 0
         available_hospital_beds = db.query(func.sum(Hospital.available_beds)).scalar() or 0
         
+        # Organization and Staff Statistics
+        total_organizations = db.query(func.count(Organization.id)).scalar()
+        total_staff = db.query(func.count(Staff.id)).scalar()
+        active_staff = db.query(func.count(Staff.id)).filter(Staff.status == "Active").scalar()
+        
         return DashboardStats(
             total_sos=total_sos,
             pending_sos=pending_sos,
@@ -37,7 +42,10 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
             total_shelter_capacity=total_shelter_capacity,
             available_shelter_capacity=available_shelter_capacity,
             total_hospital_beds=total_hospital_beds,
-            available_hospital_beds=available_hospital_beds
+            available_hospital_beds=available_hospital_beds,
+            total_organizations=total_organizations,
+            total_staff=total_staff,
+            active_staff=active_staff
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching dashboard stats: {str(e)}")

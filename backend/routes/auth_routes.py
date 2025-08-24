@@ -96,7 +96,8 @@ async def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
             email=user_data.email,
             hashed_password=hashed_password,
             role=user_data.role,
-            organization=user_data.organization
+            organization_id=user_data.organization_id,
+            division_id=user_data.division_id
         )
         
         db.add(db_user)
@@ -171,7 +172,7 @@ async def update_current_user(
     """Update current user information"""
     try:
         # Only allow updating certain fields
-        allowed_fields = ["email", "organization"]
+        allowed_fields = ["email", "organization_id", "division_id"]
         update_data = {k: v for k, v in user_update.items() if k in allowed_fields}
         
         for field, value in update_data.items():

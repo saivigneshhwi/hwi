@@ -26,7 +26,55 @@ def get_db():
     finally:
         db.close()
 
-# SOS Request Model
+# Organization Model
+class Organization(Base):
+    __tablename__ = "organizations"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, nullable=False, unique=True)
+    type = Column(String, nullable=False)  # Government, NGO, Volunteer Group, Private
+    category = Column(String, nullable=False)  # Emergency Response, Medical, Relief, Logistics
+    address = Column(String)
+    contact_person = Column(String)
+    contact_phone = Column(String)
+    contact_email = Column(String)
+    capacity = Column(Integer, default=0)  # Number of people they can handle
+    current_load = Column(Integer, default=0)  # Current number of people being helped
+    status = Column(String, default="Active")  # Active, Inactive, Overloaded
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# Division Model
+class Division(Base):
+    __tablename__ = "divisions"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, nullable=False)
+    organization_id = Column(String, ForeignKey("organizations.id"))
+    type = Column(String, nullable=False)  # Medical, Rescue, Logistics, Communication
+    description = Column(Text)
+    capacity = Column(Integer, default=0)
+    current_load = Column(Integer, default=0)
+    status = Column(String, default="Active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# Staff Model
+class Staff(Base):
+    __tablename__ = "staff"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, nullable=False)
+    organization_id = Column(String, ForeignKey("organizations.id"))
+    division_id = Column(String, ForeignKey("divisions.id"), nullable=True)
+    role = Column(String, nullable=False)  # Manager, Worker, Specialist, Volunteer
+    skills = Column(Text)  # JSON string of skills
+    contact_phone = Column(String)
+    contact_email = Column(String)
+    availability = Column(String, default="Available")  # Available, Busy, Off-duty
+    current_location = Column(String)
+    status = Column(String, default="Active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# SOS Request Model (Enhanced)
 class SOSRequest(Base):
     __tablename__ = "sos_requests"
     
@@ -41,17 +89,37 @@ class SOSRequest(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     category = Column(String)  # Needs Rescue, Medical, Food, etc.
     priority = Column(Integer, default=1)  # 1-5, 5 being highest
-    assigned_to = Column(String, nullable=True)
+    assigned_to = Column(String, ForeignKey("staff.id"), nullable=True)
+    assigned_organization = Column(String, ForeignKey("organizations.id"), nullable=True)
+    assigned_division = Column(String, ForeignKey("divisions.id"), nullable=True)
     notes = Column(Text, nullable=True)
+    estimated_completion = Column(DateTime, nullable=True)
+    actual_completion = Column(DateTime, nullable=True)
+    assignment_time = Column(DateTime, nullable=True)
+    accepted_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-# Shelter Model
+# Ticket Update History Model
+class TicketUpdate(Base):
+    __tablename__ = "ticket_updates"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    ticket_id = Column(String, ForeignKey("sos_requests.id"))
+    updated_by = Column(String, ForeignKey("staff.id"))
+    field_name = Column(String, nullable=False)  # status, assigned_to, notes, etc.
+    old_value = Column(Text)
+    new_value = Column(Text)
+    update_time = Column(DateTime, default=datetime.utcnow)
+    notes = Column(Text)
+
+# Shelter Model (Enhanced)
 class Shelter(Base):
     __tablename__ = "shelters"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     longitude = Column(Float, nullable=False)
     latitude = Column(Float, nullable=False)
     address = Column(String)
@@ -61,14 +129,16 @@ class Shelter(Base):
     status = Column(String, default="Active")  # Active, Inactive, Full
     contact_person = Column(String)
     contact_phone = Column(String)
+    facilities = Column(Text)  # JSON string of available facilities
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# Hospital Model
+# Hospital Model (Enhanced)
 class Hospital(Base):
     __tablename__ = "hospitals"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     longitude = Column(Float, nullable=False)
     latitude = Column(Float, nullable=False)
     address = Column(String)
@@ -77,14 +147,17 @@ class Hospital(Base):
     icu_beds = Column(Integer, default=0)
     available_icu = Column(Integer, default=0)
     contact_phone = Column(String)
+    specialties = Column(Text)  # JSON string of medical specialties
+    emergency_services = Column(Text)  # JSON string of emergency services
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# Resource Center Model
+# Resource Center Model (Enhanced)
 class ResourceCenter(Base):
     __tablename__ = "resource_centers"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     longitude = Column(Float, nullable=False)
     latitude = Column(Float, nullable=False)
     address = Column(String)
@@ -92,9 +165,11 @@ class ResourceCenter(Base):
     inventory = Column(Text)  # JSON string of available items
     contact_person = Column(String)
     contact_phone = Column(String)
+    capacity = Column(Integer, default=0)
+    current_stock = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# User Model for Authentication
+# User Model for Authentication (Enhanced)
 class User(Base):
     __tablename__ = "users"
     
@@ -103,6 +178,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="viewer")  # admin, responder, viewer
-    organization = Column(String, nullable=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=True)
+    division_id = Column(String, ForeignKey("divisions.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)

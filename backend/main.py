@@ -1,12 +1,23 @@
+import os
+
+import uvicorn
+from database import Base, engine
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import uvicorn
-from dotenv import load_dotenv
-import os
 
-from routes import sos_routes, shelter_routes, auth_routes, dashboard_routes, hospital_routes
-from database import engine, Base
+# Import routes
+from routes import auth_routes
+from routes import dashboard_routes
+from routes import hospital_routes
+from routes import shelter_routes
+from routes import sos_routes
+from routes import organization_routes
+from routes import staff_routes
+from routes import division_routes
+from routes import emergency_routes
+from routes import flood_detection_routes
 
 # Load environment variables (optional)
 try:
@@ -46,6 +57,11 @@ app.include_router(shelter_routes.router, prefix="/api/shelters", tags=["Shelter
 app.include_router(hospital_routes.router, prefix="/api/hospitals", tags=["Hospitals"])
 app.include_router(auth_routes.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(dashboard_routes.router, prefix="/api/dashboard", tags=["Dashboard"])
+app.include_router(organization_routes.router, prefix="/api/organizations", tags=["Organizations"])
+app.include_router(staff_routes.router, prefix="/api/staff", tags=["Staff"])
+app.include_router(division_routes.router, prefix="/api/divisions", tags=["Divisions"])
+app.include_router(emergency_routes.router, prefix="/api/emergency", tags=["Emergency Response"])
+app.include_router(flood_detection_routes.router, prefix="/api/flood-detection", tags=["Flood Detection"])
 
 @app.get("/")
 async def root():
@@ -56,9 +72,4 @@ async def health_check():
     return {"status": "healthy", "service": "disaster-response-api"}
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+    uvicorn.run(app, host="0.0.0.0", port=8001)
