@@ -7,14 +7,22 @@ import {
   Phone, 
   Search,
   Filter,
-  Plus,
   Edit,
-  Trash2,
   CheckCircle,
   X
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+
+// Constants
+const STATUS_COLORS = {
+  'Available': 'bg-green-100 text-green-800',
+  'Active': 'bg-blue-100 text-blue-800',
+  'Full': 'bg-red-100 text-red-800',
+  'Inactive': 'bg-gray-100 text-gray-800'
+};
+
+const REGIONS = ['Western Maharashtra', 'Central Maharashtra', 'Vidarbha'];
 
 const Resources = () => {
   const [shelters, setShelters] = useState([]);
@@ -75,13 +83,7 @@ const Resources = () => {
   };
 
   const getStatusColor = (status) => {
-    const colors = {
-      'Available': 'bg-green-100 text-green-800',
-      'Active': 'bg-blue-100 text-blue-800',
-      'Full': 'bg-red-100 text-red-800',
-      'Inactive': 'bg-gray-100 text-gray-800'
-    };
-    return colors[status] || colors['Available'];
+    return STATUS_COLORS[status] || STATUS_COLORS['Available'];
   };
 
   const getRegionName = (longitude) => {
@@ -121,7 +123,6 @@ const Resources = () => {
 
   const shelterTypes = [...new Set(shelters.map(s => s.type))];
   const shelterStatuses = [...new Set(shelters.map(s => s.status))];
-  const regions = ['Western Maharashtra', 'Central Maharashtra', 'Vidarbha'];
 
   return (
     <div className="p-6 space-y-6">
@@ -221,7 +222,7 @@ const Resources = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All Regions</option>
-              {regions.map(region => (
+              {REGIONS.map(region => (
                 <option key={region} value={region}>{region}</option>
               ))}
             </select>
@@ -244,6 +245,7 @@ const Resources = () => {
                 shelter={shelter}
                 onUpdate={handleShelterUpdate}
                 region={getRegionName(shelter.longitude)}
+                getStatusColor={getStatusColor}
               />
             ))}
           </div>
@@ -274,22 +276,12 @@ const Resources = () => {
 };
 
 // Shelter Card Component
-const ShelterCard = ({ shelter, onUpdate, region }) => {
+const ShelterCard = ({ shelter, onUpdate, region, getStatusColor }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({
     current_occupancy: shelter.current_occupancy,
     status: shelter.status
   });
-
-  const getStatusColor = (status) => {
-    const colors = {
-      'Available': 'bg-green-100 text-green-800',
-      'Active': 'bg-blue-100 text-blue-800',
-      'Full': 'bg-red-100 text-red-800',
-      'Inactive': 'bg-gray-100 text-gray-800'
-    };
-    return colors[status] || colors['Available'];
-  };
 
   const handleSave = () => {
     onUpdate(shelter.id, editData);
