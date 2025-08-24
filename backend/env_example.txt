@@ -1,0 +1,18 @@
+# Database Configuration
+DATABASE_URL=postgresql://postgres:password@localhost:5432/disaster_response
+
+# JWT Configuration
+SECRET_KEY=your-super-secret-key-here-change-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# API Configuration
+API_HOST=0.0.0.0
+API_PORT=8000
+DEBUG=True
+
+# CORS Configuration
+ALLOWED_ORIGINS=["http://localhost:3000", "http://localhost:3001"]
+
+# Mapbox Configuration (for frontend)
+MAPBOX_ACCESS_TOKEN=your-mapbox-access-token-here
